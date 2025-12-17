@@ -13,6 +13,8 @@ import { X } from 'lucide-react'
 import { fetchDashboardProjects, DashboardProject, LifecycleStage } from '@/api/projects'
 import { toast } from 'react-hot-toast'
 
+ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'
+
 // Transform API data to UI Project format
 function transformProject(p: DashboardProject): Project {
   // Map lifecycle stage to status
@@ -131,7 +133,7 @@ export const MissionControl: React.FC = () => {
     if (!canCreateProject) return
 
     try {
-      const response = await fetch('/api/v1/projects/coordination', {
+      const response = await fetch(`${API_BASE_URL}/projects/coordination`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
