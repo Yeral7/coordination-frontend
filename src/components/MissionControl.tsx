@@ -9,11 +9,11 @@ import { Card, CardContent } from './ui/card'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
-import { X } from 'lucide-react'
+import { Pencil, Trash2, X } from 'lucide-react'
 import { fetchDashboardProjects, DashboardProject, LifecycleStage } from '@/api/projects'
 import { toast } from 'react-hot-toast'
 
- const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/v1'
 
 // Transform API data to UI Project format
 function transformProject(p: DashboardProject): Project {
@@ -68,6 +68,10 @@ export const MissionControl: React.FC = () => {
   const [newProjectClientName, setNewProjectClientName] = useState('')
   const [newProjectNotes, setNewProjectNotes] = useState('')
 
+  const [editProjectOpen, setEditProjectOpen] = useState(false)
+  const [editProjectId, setEditProjectId] = useState<string | null>(null)
+  const [editProjectName, setEditProjectName] = useState('')
+
   const canCreateProject = useMemo(() => {
     if (!newProjectName.trim()) return false
     if (!newProjectAddress.trim()) return false
@@ -109,6 +113,20 @@ export const MissionControl: React.FC = () => {
     loadProjects()
   }, [stageFilter])
 
+  const reloadProjects = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await fetchDashboardProjects(undefined)
+      setProjects(data.map(transformProject))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load projects')
+      setProjects([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleProjectClick = (project: Project) => {
     setSelectedProject(project)
     setDrawerOpen(true)
@@ -117,6 +135,61 @@ export const MissionControl: React.FC = () => {
   const handleFilesClick = (project: Project) => {
     setSelectedProject(project)
     setFilesModalOpen(true)
+  }
+
+  const openEditProject = (project: Project) => {
+    setEditProjectId(project.id)
+    setEditProjectName(project.name)
+    setEditProjectOpen(true)
+  }
+
+  const canSaveProjectEdit = useMemo(() => {
+    return Boolean(editProjectId && editProjectName.trim().length >= 2)
+  }, [editProjectId, editProjectName])
+
+  const saveProjectEdit = async () => {
+    if (!canSaveProjectEdit || !editProjectId) return
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/projects/${editProjectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editProjectName.trim() }),
+      })
+      if (!response.ok) {
+        const msg = await response.text()
+        throw new Error(msg || `Failed to update project: ${response.statusText}`)
+      }
+      await reloadProjects()
+      setEditProjectOpen(false)
+      toast.success('Project updated')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update project')
+    }
+  }
+
+  const deleteProject = async (project: Project) => {
+    const confirmed = window.confirm(`Delete project "${project.name}"?`)
+    if (!confirmed) return
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/projects/${project.id}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const msg = await response.text()
+        throw new Error(msg || `Failed to delete project: ${response.statusText}`)
+      }
+      if (selectedProject?.id === project.id) {
+        setDrawerOpen(false)
+        setFilesModalOpen(false)
+        setSelectedProject(null)
+      }
+      await reloadProjects()
+      toast.success('Project deleted')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete project')
+    }
   }
 
   const openNewProject = () => {
@@ -208,12 +281,40 @@ export const MissionControl: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {visibleProjects.map(project => (
-              <ProjectCard
-                key={project.id}
-                project={project}
-                onClick={() => handleProjectClick(project)}
-                onFilesClick={handleFilesClick}
-              />
+              <div key={project.id} className="relative group">
+                <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openEditProject(project)
+                    }}
+                    title="Edit"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void deleteProject(project)
+                    }}
+                    title="Delete"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <ProjectCard
+                  project={project}
+                  onClick={() => handleProjectClick(project)}
+                  onFilesClick={handleFilesClick}
+                />
+              </div>
             ))}
           </div>
         )}
@@ -284,11 +385,16 @@ export const MissionControl: React.FC = () => {
 
                 <div className="space-y-2">
                   <Label>Project Type (optional)</Label>
-                  <Input
-                    value={newProjectType}
-                    onChange={(e) => setNewProjectType(e.target.value)}
-                    placeholder="e.g. Commercial, Residential"
-                  />
+                  <Select value={newProjectType || 'NONE'} onValueChange={(v) => setNewProjectType(v === 'NONE' ? '' : v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">None</SelectItem>
+                      <SelectItem value="PRIMED">Primed</SelectItem>
+                      <SelectItem value="COLORPLUS">ColorPlus</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
@@ -314,6 +420,44 @@ export const MissionControl: React.FC = () => {
                 <Button variant="outline" onClick={() => setNewProjectOpen(false)}>Cancel</Button>
                 <Button onClick={createProject} disabled={!canCreateProject}>
                   Create Project
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Project Modal */}
+      {editProjectOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setEditProjectOpen(false)} />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-lg rounded-lg bg-white shadow-xl">
+              <div className="flex items-center justify-between border-b px-5 py-4">
+                <div>
+                  <div className="text-sm text-slate-500">Edit project</div>
+                  <div className="font-semibold text-slate-900">Project Details</div>
+                </div>
+                <button className="p-2 rounded hover:bg-slate-100" onClick={() => setEditProjectOpen(false)}>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="px-5 py-4 space-y-4">
+                <div className="space-y-2">
+                  <Label>Project Name *</Label>
+                  <Input
+                    value={editProjectName}
+                    onChange={(e) => setEditProjectName(e.target.value)}
+                    placeholder="e.g. Downtown Office Tower"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t px-5 py-4 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEditProjectOpen(false)}>Cancel</Button>
+                <Button onClick={saveProjectEdit} disabled={!canSaveProjectEdit}>
+                  Save
                 </Button>
               </div>
             </div>

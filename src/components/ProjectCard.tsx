@@ -41,17 +41,6 @@ interface ProjectCardProps {
 }
 
 export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick, onFilesClick }) => {
-  // Project type badge colors (FE-02)
-  const projectTypeColors: Record<ProjectType, { bg: string; text: string }> = {
-    PRIMED: { bg: 'bg-slate-100', text: 'text-slate-700' },
-    COLORPLUS: { bg: 'bg-blue-100', text: 'text-blue-700' },
-  }
-
-  const projectTypeLabels: Record<ProjectType, string> = {
-    PRIMED: 'Primed',
-    COLORPLUS: 'ColorPlus',
-  }
-
   const handleFilesClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (onFilesClick) {
@@ -67,12 +56,6 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onClick, onFi
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
           <h3 className="font-semibold text-slate-900">{project.name}</h3>
-          {/* Project Type Badge (FE-02) */}
-          {project.projectType && (
-            <span className={`text-xs px-2 py-1 rounded-full font-medium ${projectTypeColors[project.projectType].bg} ${projectTypeColors[project.projectType].text}`}>
-              {projectTypeLabels[project.projectType]}
-            </span>
-          )}
         </div>
 
         <p className="text-slate-600 mb-3">{project.address}</p>

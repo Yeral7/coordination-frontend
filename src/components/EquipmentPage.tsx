@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Wrench, Briefcase, LayoutGrid, Table, X, CalendarDays, ChevronLeft, ChevronRight, Inbox, CheckCircle2, XCircle, ArrowRightLeft } from 'lucide-react'
+import { Plus, Wrench, Briefcase, LayoutGrid, Table, X, CalendarDays, ChevronLeft, ChevronRight, Inbox, CheckCircle2, XCircle, ArrowRightLeft, Pencil, Trash2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 import { Badge } from './ui/badge'
@@ -319,6 +319,13 @@ export const EquipmentPage: React.FC = () => {
   const [addEquipmentType, setAddEquipmentType] = useState<EquipmentType>('EXCAVATOR')
   const [addEquipmentSerialCode, setAddEquipmentSerialCode] = useState('')
   const [addEquipmentStatus, setAddEquipmentStatus] = useState<EquipmentStatus>('AVAILABLE')
+
+  const [editEquipmentOpen, setEditEquipmentOpen] = useState(false)
+  const [editEquipmentId, setEditEquipmentId] = useState<number | null>(null)
+  const [editEquipmentName, setEditEquipmentName] = useState('')
+  const [editEquipmentType, setEditEquipmentType] = useState<EquipmentType>('EXCAVATOR')
+  const [editEquipmentSerialCode, setEditEquipmentSerialCode] = useState('')
+  const [editEquipmentStatus, setEditEquipmentStatus] = useState<EquipmentStatus>('AVAILABLE')
 
   const [movementStart, setMovementStart] = useState<string>(isoDate(addDays(today, 1)))
   const [movementNotes, setMovementNotes] = useState('')
@@ -694,6 +701,71 @@ export const EquipmentPage: React.FC = () => {
     setAddEquipmentSerialCode('')
     setAddEquipmentStatus('AVAILABLE')
     setAddEquipmentOpen(true)
+  }
+
+  const openEditEquipment = (equipment: EquipmentAsset) => {
+    setEditEquipmentId(equipment.id)
+    setEditEquipmentName(equipment.name)
+    setEditEquipmentType(equipment.type)
+    setEditEquipmentSerialCode(equipment.serialCode || '')
+    setEditEquipmentStatus('AVAILABLE')
+    setEditEquipmentOpen(true)
+  }
+
+  const canConfirmEditEquipment = useMemo(() => {
+    if (!editEquipmentId) return false
+    if (!editEquipmentName.trim()) return false
+    if (!editEquipmentType) return false
+    return true
+  }, [editEquipmentId, editEquipmentName, editEquipmentType])
+
+  const confirmEditEquipment = () => {
+    if (!canConfirmEditEquipment || !editEquipmentId) return
+
+    void (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/equipment/${editEquipmentId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: editEquipmentName.trim(),
+            type: editEquipmentType,
+            serialCode: editEquipmentSerialCode.trim() || null,
+            status: editEquipmentStatus,
+          }),
+        })
+        if (!response.ok) {
+          const msg = await response.text()
+          throw new Error(msg || `Failed to update equipment: ${response.statusText}`)
+        }
+        await Promise.all([reloadFleetEvents(), reloadFleet()])
+        setEditEquipmentOpen(false)
+        toast.success('Equipment updated')
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to update equipment')
+      }
+    })()
+  }
+
+  const deleteEquipment = (equipment: EquipmentAsset) => {
+    const confirmed = window.confirm(`Delete equipment "${equipment.name}"?`)
+    if (!confirmed) return
+
+    void (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/equipment/${equipment.id}`, {
+          method: 'DELETE',
+        })
+        if (!response.ok) {
+          const msg = await response.text()
+          throw new Error(msg || `Failed to delete equipment: ${response.statusText}`)
+        }
+        await Promise.all([reloadFleetEvents(), reloadFleet()])
+        toast.success('Equipment deleted')
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete equipment')
+      }
+    })()
   }
 
   const confirmAddEquipment = () => {
@@ -1215,6 +1287,12 @@ export const EquipmentPage: React.FC = () => {
                               <ArrowRightLeft className="h-4 w-4" />
                               Move
                             </Button>
+                            <Button size="sm" variant="ghost" onClick={() => openEditEquipment(equipment)} className="h-9 w-9 p-0" title="Edit">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteEquipment(equipment)} className="h-9 w-9 p-0 text-rose-600 hover:text-rose-700" title="Delete">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -1270,6 +1348,12 @@ export const EquipmentPage: React.FC = () => {
                       <ArrowRightLeft className="h-4 w-4" />
                       Move
                     </Button>
+                    <Button variant="ghost" size="sm" className="h-9 w-9 p-0" onClick={() => openEditEquipment(equipment)} title="Edit">
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-rose-600 hover:text-rose-700" onClick={() => deleteEquipment(equipment)} title="Delete">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -1280,6 +1364,76 @@ export const EquipmentPage: React.FC = () => {
       {filteredRows.length === 0 && (
         <div className="text-center py-10 text-sm text-slate-500">
           No equipment in this status.
+        </div>
+      )}
+
+      {editEquipmentOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setEditEquipmentOpen(false)} />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-lg rounded-lg bg-white shadow-xl">
+              <div className="flex items-center justify-between border-b px-5 py-4">
+                <div>
+                  <div className="text-sm text-slate-500">Edit equipment</div>
+                  <div className="font-semibold text-slate-900">Equipment Details</div>
+                </div>
+                <button className="p-2 rounded hover:bg-slate-100" onClick={() => setEditEquipmentOpen(false)}>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="px-5 py-4 space-y-4">
+                <div className="space-y-2">
+                  <Label>Name *</Label>
+                  <Input value={editEquipmentName} onChange={(e) => setEditEquipmentName(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Type *</Label>
+                  <Select value={editEquipmentType} onValueChange={(v) => setEditEquipmentType(v as EquipmentType)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TRUCK">Truck</SelectItem>
+                      <SelectItem value="VAN">Van</SelectItem>
+                      <SelectItem value="FORKLIFT">Forklift</SelectItem>
+                      <SelectItem value="MANLIFT">Manlift</SelectItem>
+                      <SelectItem value="EXCAVATOR">Excavator</SelectItem>
+                      <SelectItem value="OTHER">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Serial Code</Label>
+                  <Input value={editEquipmentSerialCode} onChange={(e) => setEditEquipmentSerialCode(e.target.value)} placeholder="Optional" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select value={editEquipmentStatus} onValueChange={(v) => setEditEquipmentStatus(v as EquipmentStatus)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AVAILABLE">Available</SelectItem>
+                      <SelectItem value="ASSIGNED">Assigned</SelectItem>
+                      <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
+                      <SelectItem value="OUT_OF_SERVICE">Out of service</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="border-t px-5 py-4 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEditEquipmentOpen(false)}>Cancel</Button>
+                <Button onClick={confirmEditEquipment} disabled={!canConfirmEditEquipment}>
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
